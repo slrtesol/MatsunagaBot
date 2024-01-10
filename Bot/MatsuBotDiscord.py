@@ -41,6 +41,7 @@ import hashlib
 from icrawler.builtin import GoogleImageCrawler
 from icrawler.builtin import BingImageCrawler
 from icrawler.builtin import BaiduImageCrawler
+from urlextract import URLExtract
 
 intents = discord.Intents.default()
 intents.messages = True
@@ -63,6 +64,8 @@ async def on_message(message):
     if message.content.lower() == 'まぁつなんがぁ':
         await message.channel.send('やぁ！！')
 
+# Before Update
+    """
     # メッセージがユーザーからのもので、かつ vxtwitter.com が含まれていない場合
     if message.author.bot == False and 'vxtwitter.com' not in message.content:
         # メッセージがユーザーからのもので、かつTwitterのリンクが含まれている場合
@@ -70,7 +73,64 @@ async def on_message(message):
             # メッセージを書き換えて対応するURLに自動補完
             corrected_message = message.content.replace('twitter.com', 'vxtwitter.com').replace('x.com', 'vxtwitter.com')
             await message.channel.send(f'リンクを補完しました: {corrected_message}')
+    """
 
+# After Update
+    # twitter.com/* , x.com/* が含まれているとき
+    if "https://twitter.com" in message.content or "https://x.com" in message.content:
+        # メッセージに含まれるリンクを抜き出す
+        urls = URLExtract().find_urls(message.content)
+        # Embed(埋め込みメッセージ)用の空のリストを作成
+        el = []
+
+        for url in urls:
+            # URLが twitter.com/* の場合
+            if "https://twitter.com" in url:
+                tweet_link = url.replace('https://twitter.com', 'https://twittpr.com')
+            # URLが x.com/* の場合
+            elif "https://x.com" in url:
+                tweet_link = url.replace('https://x.com', 'https://twittpr.com')
+            # URLがどちらでもない場合
+            else:
+                continue
+
+            # ツイートの情報を取得する
+            response = requests.get(url = tweet_link)
+            html_response = BeautifulSoup(response.content, 'html_parser')
+
+            # ツイートIDからツイート時間を取得する関数
+            def tweetid_to_time(id: int):
+                return ((id >> 22) + 1288834974657) / 1000
+
+            # ツイートに関する情報を取得
+            url = html_response.find('meta', property = "og:url").attrs['content']
+            content = html_response.find('meta', property = "og:description").attrs['content']
+            author = s.find('meta', property = "twitter:title").attrs['content']
+            icon = s.find('meta', property = "og:image").attrs['content']
+            id = int(url.split("/")[5])
+            timestamp = datetime.fromtimestamp(tweetid_to_time(id))
+            author_link = url.split('/status')[0]
+
+            # ツイートをEmbed化する
+            e = discord.Embed(
+                description = content, 
+                color = 0x00a8fc,
+                timestamp = timestamp
+            )
+            # ツイートしたユーザーのアイコンが取得できているか (*ツイートに画像が含まれている場合、ユーザーアイコンは取得できない)
+            if "profile_image" not in icon or "fxtwitter.com" in icon:
+                e.set_author(name = author, url = author_link)
+                e.set_image(url = icon)
+            else:
+                e.set_author(name = author, url = author_link, icon_url = icon)
+            # ツイートのフッターを設定する (*公式で使用できた時代の仕様を再現)
+            e.set_footer(text = f"Twitter", icon_url = f"https://abs.twimg.com/icons/apple-touch-icon-192x192.png")
+            # Embed用のリストに追加する
+            el.append(e)
+
+        # メッセージにリプライで埋め込みメッセージを送信する (*ユーザーへのメンションは無効化)
+        await message.reply(embeds = el, mention_author = False)
+    
     if message.attachments and '透過' in message.content:
         for attachment in message.attachments:
             if attachment.filename.endswith('.png') or attachment.filename.endswith('.jpg'):
